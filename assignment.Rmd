@@ -1,0 +1,131 @@
+```{r}
+#install.packages("quantmod")
+install.packages("forecast")
+library(quantmod)
+library(forecast)
+```
+```{r}
+#export data
+data_sp <- getSymbols('^GSPC',src='yahoo',auto.assign=FALSE, from = as.Date("2000-01-01"), to = as.Date("2022-12-30"))
+data_nk <- getSymbols('^N225',src='yahoo',auto.assign=FALSE, from = as.Date("2000-01-01"), to = as.Date("2022-12-30"))
+```
+
+
+```{r}
+# get data
+data_sp_train <- getSymbols('^GSPC',src='yahoo',auto.assign=FALSE, from = as.Date("2000-01-01"), to = as.Date("2019-12-31"))
+data_sp_train <- data_sp_train$GSPC.Close
+data_sp_test <- getSymbols('^GSPC',src='yahoo',auto.assign=FALSE, from = as.Date("2020-01-01"), to = as.Date("2022-12-30"))
+data_sp_test <- data_sp_test$GSPC.Close
+
+data_nk_train <- getSymbols('^N225',src='yahoo',auto.assign=FALSE, from = as.Date("2000-01-01"), to = as.Date("2019-12-31"))
+data_nk_train <- data_nk_train$N225.Close
+data_nk_train <- na.omit(data_nk_train)
+data_nk_test <- getSymbols('^N225',src='yahoo',auto.assign=FALSE, from = as.Date("2020-01-01"), to = as.Date("2022-12-30"))
+data_nk_test <- data_nk_test$N225.Close
+
+plot(1: length(data_sp_train), data_sp_train, col = 'red', type = 'l', main = 'SP500')
+lines(length(data_sp_train): (length(data_sp_train) + length(data_sp_test) - 1) , data_sp_test, col = 'blue')
+
+plot(1: length(data_nk_train), data_nk_train, col = 'red', type = 'l', main = 'Nikkei255')
+lines(length(data_nk_train): (length(data_nk_train) + length(data_nk_test) - 1) , data_nk_test, col = 'blue')
+
+```
+
+```{r}
+acf(data_nk_train)
+acf(data_sp_train)
+pacf(data_nk_train)
+pacf(data_sp_train)
+```
+
+
+```{r}
+# metrics
+mse <- function(y_pred, y_true) {
+    stopifnot(length(y_pred) == length(y_true))
+    sum((y_pred - y_true)^2) / length(y_pred)
+}
+
+mae <- function(y_pred, y_true) {
+    stopifnot(length(y_pred) == length(y_true))
+    sum(abs(y_pred - y_true)) / length(y_pred)
+}
+
+```
+
+```{r}
+# baseline1: same as yesterday
+same <- function(x) {
+    tail(x, 1)
+}
+
+# baseline2: moving average
+ma_model <- function(x, window = 5) {
+    na.omit(ma(x, order = window, centre = FALSE))
+}
+
+# arima model
+arima_model_sp <- auto.arima(data_sp_train)
+arima_model_nk <- auto.arima(data_nk_train)
+```
+
+```{r}
+# results
+
+# the shortest result because of window length
+results_ma_sp <- ma_model(data_sp_test, 5)
+results_ma_nk <- ma_model(data_nk_test, 5)
+
+# same as yesterday, need to truncate
+results_same_sp <- tail(head(data_sp_test, -1), length(results_ma_sp))
+results_same_nk <- tail(head(data_nk_test, -1), length(results_ma_nk))
+
+
+# arima, need to truncate
+r <- predict(arima_model_sp, data_sp_test)
+results_arima_sp <- tail(r$pred[1:length(data_sp_test)], length(results_ma_sp))
+
+r <- predict(arima_model_nk, data_nk_test)
+results_arima_nk <- tail(r$pred[1:length(data_nk_test)], length(results_ma_nk))
+
+data_nk_test <- coredata(tail(data_nk_test, length(results_same_nk)))
+data_sp_test <- coredata(tail(data_sp_test, length(results_same_sp)))
+
+```
+
+```{r}
+# result analysis
+mae(results_same_nk, data_nk_test)
+mse(results_same_nk, data_nk_test)
+mae(results_ma_nk, data_nk_test)
+mse(results_ma_nk, data_nk_test)
+mae(results_arima_nk, data_nk_test)
+mse(results_arima_nk, data_nk_test)
+
+mae(results_same_sp, data_sp_test)
+mse(results_same_sp, data_sp_test)
+mae(results_ma_sp, data_sp_test)
+mse(results_ma_sp, data_sp_test)
+mae(results_arima_sp, data_sp_test)
+mse(results_arima_sp, data_sp_test)
+
+
+```
+
+```{r}
+autoplot(arima_model_nk)
+autoplot(arima_model_sp)
+
+
+plot(c(1: length(data_sp_test)), data_sp_test, type = 'l')
+lines(c(1: length(data_sp_test)), results_same_sp, col = 'red', type = 'l')
+lines(c(1: length(data_sp_test)), results_ma_sp, col = 'blue', type = 'l')
+lines(c(1: length(data_sp_test)), results_arima_sp, col = 'green', type = 'l')
+
+
+plot(c(1: length(data_nk_test)), data_nk_test, type = 'l')
+lines(c(1: length(data_nk_test)), results_same_nk, col = 'red', type = 'l')
+lines(c(1: length(data_nk_test)), results_ma_nk, col = 'blue', type = 'l')
+lines(c(1: length(data_nk_test)), results_arima_nk, col = 'green', type = 'l')
+```
